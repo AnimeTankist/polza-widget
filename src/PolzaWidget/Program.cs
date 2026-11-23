@@ -83,6 +83,7 @@ namespace PolzaWidget
         private readonly NotifyIcon _tray;
         private readonly ToolStripMenuItem _topmostItem;
         private readonly ToolStripMenuItem _autoStartItem;
+        private readonly ToolStripMenuItem _updateItem;
         private readonly EventWaitHandle _showEvent;
         private readonly Thread _listener;
         private volatile bool _stopping;
@@ -111,17 +112,27 @@ namespace PolzaWidget
             _autoStartItem.Checked = Shell.IsAutoStart();
             _autoStartItem.Click += delegate { Shell.SetAutoStart(_autoStartItem.Checked); };
 
+            _updateItem = new ToolStripMenuItem("Доступна новая версия");
+            _updateItem.Visible = false;
+            _updateItem.Click += delegate { OpenUpdatePage(); };
+
+            var checkItem = new ToolStripMenuItem("Проверить обновления");
+            checkItem.Click += delegate { CheckForUpdates(false); };
+
             var exitItem = new ToolStripMenuItem("Выход");
             exitItem.Click += delegate { ExitApp(); };
 
             menu.Items.Add(showItem);
             menu.Items.Add(_topmostItem);
             menu.Items.Add(_autoStartItem);
+            menu.Items.Add(_updateItem);
             menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(checkItem);
             menu.Items.Add(exitItem);
 
             _tray.ContextMenuStrip = menu;
             _tray.DoubleClick += delegate { _form.ShowFromTray(); };
+            _tray.BalloonTipClicked += delegate { OpenUpdatePage(); };
             _tray.MouseClick += delegate(object sender, MouseEventArgs e)
             {
                 if (e.Button == MouseButtons.Left) _form.ToggleVisible();
@@ -142,6 +153,69 @@ namespace PolzaWidget
             _listener = new Thread(ListenLoop);
             _listener.IsBackground = true;
             _listener.Start();
+
+            // Один тихий запрос через несколько секунд после старта: не мешает загрузке.
+            var startupTimer = new System.Windows.Forms.Timer();
+            startupTimer.Interval = 6000;
+            startupTimer.Tick += delegate
+            {
+                startupTimer.Stop();
+                startupTimer.Dispose();
+                CheckForUpdates(true);
+            };
+            startupTimer.Start();
+        }
+
+        private async void CheckForUpdates(bool silent)
+        {
+            if (!Updater.Configured)
+            {
+                if (!silent)
+                    MessageBox.Show("Проверка обновлений заработает после публикации репозитория.",
+                        "Обновления", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            UpdateInfo info = await Updater.CheckAsync();
+            if (info == null)
+            {
+                if (!silent)
+                    MessageBox.Show("У вас последняя версия (" + Updater.Current + ").",
+                        "Обновления", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            _updateItem.Text = "Доступна версия " + info.Version;
+            _updateItem.Tag = info.Url;
+            _updateItem.Visible = true;
+
+            if (!silent)
+            {
+                DialogResult answer = MessageBox.Show(
+                    "Доступна версия " + info.Version + ". Открыть страницу загрузки?",
+                    "Обновления", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                if (answer == DialogResult.Yes) OpenUpdatePage();
+                return;
+            }
+
+            // Тихое уведомление — один раз на версию.
+            if (Updater.LastNotified() != info.Version)
+            {
+                Updater.MarkNotified(info.Version);
+                try
+                {
+                    _tray.ShowBalloonTip(6000, "Доступна версия " + info.Version,
+                        "Нажмите, чтобы открыть страницу загрузки.", ToolTipIcon.Info);
+                }
+                catch { }
+            }
+        }
+
+        private void OpenUpdatePage()
+        {
+            string url = _updateItem.Tag as string;
+            if (string.IsNullOrEmpty(url)) return;
+            try { System.Diagnostics.Process.Start(url); } catch { }
         }
 
         private static string SafeTip(string text)

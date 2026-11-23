@@ -13,8 +13,8 @@ namespace PolzaWidget
         public string apiKey = "";
         public int refreshSeconds = 30;
         public bool topmost = false;
-        /// <summary>Непрозрачность фона: 1.0 — плотный, 0.95 — как в исходной версии.</summary>
-        public double opacity = 0.95;
+        /// <summary>Непрозрачность фона: 1.0 — плотный, 0.5 — полупрозрачный.</summary>
+        public double opacity = 0.85;
 
         public static string DataDir
         {

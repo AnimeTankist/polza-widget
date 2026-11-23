@@ -1,4 +1,4 @@
-# Сборка одного exe. Требуется .NET SDK 8.
+﻿# Сборка одного exe. Требуется .NET SDK 8.
 $ErrorActionPreference = 'Stop'
 
 $dotnet = Get-Command dotnet.exe -ErrorAction SilentlyContinue

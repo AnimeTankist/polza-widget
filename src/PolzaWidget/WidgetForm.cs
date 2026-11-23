@@ -39,7 +39,7 @@ namespace PolzaWidget
         private Point _dragOffset;
 
         private readonly Font _fBrand = new Font("Segoe UI", 8.5f);
-        private readonly Font _fAmount = new Font("Segoe UI", 22f, FontStyle.Bold);
+        private readonly Font _fAmount = new Font("Segoe UI", 26f, FontStyle.Bold);
         private readonly Font _fLabel = new Font("Segoe UI", 8f);
         private readonly Font _fValue = new Font("Segoe UI", 9.5f);
         private readonly Font _fIcon = new Font("Segoe MDL2 Assets", 9f);
@@ -259,31 +259,35 @@ namespace PolzaWidget
             DrawText(g, "\u27F3", _fRefresh, _hover == 1 ? Color.White : muted, RefreshRect, StringAlignment.Center);
             DrawText(g, "\uE711", _fIcon, _hover == 2 ? Color.White : muted, CloseRect, StringAlignment.Center);
 
+            // Сумма прижата к левому краю и выровнена с «polza.ai» (x = 24).
+            // Строка заголовка занимает 4..26, поэтому сумма начинается ниже.
             DrawText(g, _total.ToString("N2", Ru) + " ₽", _fAmount, Color.White,
-                     new Rectangle(14, 22, 290, 42), StringAlignment.Near);
+                     new Rectangle(24, 30, Width - 48, 48), StringAlignment.Near);
             DrawText(g, "расход за сегодня", _fSmall, Color.FromArgb(138, 138, 138),
-                     new Rectangle(14, 66, 290, 16), StringAlignment.Near);
+                     new Rectangle(24, 82, Width - 48, 16), StringAlignment.Near);
 
-            using (var line = new Pen(Color.FromArgb(42, 255, 255, 255))) g.DrawLine(line, 14, 90, 304, 90);
+            using (var line = new Pen(Color.FromArgb(42, 255, 255, 255))) g.DrawLine(line, 30, 114, Width - 30, 114);
 
-            DrawMetric(g, "вход", FormatTokens(_prompt), 96, 14, 150);
-            DrawMetric(g, "выход", FormatTokens(_completion), 96, 162, 304);
-            DrawMetric(g, "кэш", FormatTokens(_cached), 116, 14, 150);
-            DrawMetric(g, "запросов", _count.ToString("N0", Ru), 116, 162, 304);
+            // Метрики — узкий блок по центру карточки, а не от края до края.
+            DrawMetric(g, "вход", FormatTokens(_prompt), 122, 40, 148);
+            DrawMetric(g, "выход", FormatTokens(_completion), 122, 170, 278);
+            DrawMetric(g, "кэш", FormatTokens(_cached), 148, 40, 148);
+            DrawMetric(g, "запросов", _count.ToString("N0", Ru), 148, 170, 278);
 
+            // Нижняя строка — одной центральной линией.
             string balance = _balance.HasValue
                 ? "баланс " + _balance.Value.ToString("N2", Ru) + " ₽"
                 : "баланс —";
-            DrawText(g, balance, _fSmall, dim, new Rectangle(14, 192, 180, 18), StringAlignment.Near);
-            DrawText(g, _status, _fSmall, dim, new Rectangle(180, 192, 124, 18), StringAlignment.Far);
+            DrawText(g, balance + " · " + _status, _fSmall, dim,
+                     new Rectangle(0, 186, Width, 18), StringAlignment.Center);
         }
 
         private void DrawMetric(Graphics g, string label, string value, int y, int labelLeft, int valueRight)
         {
             DrawText(g, label, _fLabel, Color.FromArgb(122, 122, 122),
-                     new Rectangle(labelLeft, y, 80, 16), StringAlignment.Near);
+                     new Rectangle(labelLeft, y, 60, 16), StringAlignment.Near);
             DrawText(g, value, _fValue, Color.FromArgb(232, 232, 232),
-                     new Rectangle(valueRight - 110, y, 110, 16), StringAlignment.Far);
+                     new Rectangle(valueRight - 80, y, 80, 16), StringAlignment.Far);
         }
 
         private static void DrawText(Graphics g, string text, Font font, Color color, Rectangle rect, StringAlignment align)

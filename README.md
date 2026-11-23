@@ -21,7 +21,7 @@
 ### winget
 
 ```powershell
-winget install Zavorin.PolzaWidget
+winget install AnimeTankist.PolzaWidget
 ```
 
 ### Вручную
