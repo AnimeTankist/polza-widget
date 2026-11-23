@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.Globalization;
 using System.Threading.Tasks;
@@ -42,6 +43,7 @@ namespace PolzaWidget
         private readonly Font _fLabel = new Font("Segoe UI", 8f);
         private readonly Font _fValue = new Font("Segoe UI", 9.5f);
         private readonly Font _fIcon = new Font("Segoe MDL2 Assets", 9f);
+        private readonly Font _fRefresh = new Font("Segoe UI Symbol", 10f);
         private readonly Font _fSmall = new Font("Segoe UI", 8f);
 
         public bool ForceClose;
@@ -72,7 +74,6 @@ namespace PolzaWidget
             _timer.Tick += delegate { RefreshNow(); };
 
             RestorePosition();
-            UpdateRegion();
         }
 
         protected override CreateParams CreateParams
@@ -82,28 +83,13 @@ namespace PolzaWidget
                 CreateParams cp = base.CreateParams;
                 // WS_EX_TOOLWINDOW: окно не попадает в Alt+Tab и на панель задач.
                 cp.ExStyle |= 0x00000080;
+                // WS_EX_LAYERED: рисуем через UpdateLayeredWindow, чтобы фон был полупрозрачным,
+                // а текст оставался плотным и чётким.
+                cp.ExStyle |= 0x00080000;
                 return cp;
             }
         }
 
-        protected override void OnHandleCreated(EventArgs e)
-        {
-            base.OnHandleCreated(e);
-            UpdateRegion();
-        }
-
-        protected override void OnResize(EventArgs e)
-        {
-            base.OnResize(e);
-            UpdateRegion();
-        }
-
-        private void UpdateRegion()
-        {
-            if (Width <= 0 || Height <= 0) return;
-            using (GraphicsPath path = RoundedPath(new Rectangle(0, 0, Width, Height), Radius))
-                Region = new Region(path);
-        }
 
         private static GraphicsPath RoundedPath(Rectangle rect, int radius)
         {
@@ -115,6 +101,38 @@ namespace PolzaWidget
             path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
             path.CloseFigure();
             return path;
+        }
+
+        private const int WM_NCHITTEST = 0x0084;
+        private const int HTTRANSPARENT = -1;
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_NCHITTEST)
+            {
+                // Скруглённые уголки прозрачны: клики проходят мимо окна.
+                int packed = m.LParam.ToInt32();
+                int screenX = (short)(packed & 0xFFFF);
+                int screenY = (short)((packed >> 16) & 0xFFFF);
+                Point client = PointToClient(new Point(screenX, screenY));
+                if (!InsideRounded(client))
+                {
+                    m.Result = (IntPtr)HTTRANSPARENT;
+                    return;
+                }
+            }
+            base.WndProc(ref m);
+        }
+
+        private bool InsideRounded(Point p)
+        {
+            if (p.X < 0 || p.Y < 0 || p.X >= Width || p.Y >= Height) return false;
+            int cx = p.X < Radius ? Radius : (p.X > Width - Radius ? Width - Radius : p.X);
+            int cy = p.Y < Radius ? Radius : (p.Y > Height - Radius ? Height - Radius : p.Y);
+            if (cx == p.X || cy == p.Y) return true;
+            int dx = p.X - cx;
+            int dy = p.Y - cy;
+            return dx * dx + dy * dy <= Radius * Radius;
         }
 
         // --- позиция ---------------------------------------------------------
@@ -155,7 +173,7 @@ namespace PolzaWidget
             if (_busy) return;
             _busy = true;
             _status = "обновление…";
-            Invalidate(new Rectangle(0, 186, CardWidth, 38));
+            Render();
 
             try
             {
@@ -178,7 +196,7 @@ namespace PolzaWidget
             finally
             {
                 _busy = false;
-                Invalidate();
+                Render();
                 EventHandler handler = DataUpdated;
                 if (handler != null) handler(this, EventArgs.Empty);
             }
@@ -196,15 +214,38 @@ namespace PolzaWidget
         }
 
         // --- отрисовка -------------------------------------------------------
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            Graphics g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+        protected override void OnPaint(PaintEventArgs e) { }
+        protected override void OnPaintBackground(PaintEventArgs e) { }
 
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            Render();
+        }
+
+        /// <summary>Рисует карточку в 32-битный битмап и отдаёт его слоистому окну.</summary>
+        public void Render()
+        {
+            if (!IsHandleCreated || Width <= 0 || Height <= 0) return;
+            using (var bitmap = new Bitmap(Width, Height, PixelFormat.Format32bppArgb))
+            {
+                using (Graphics g = Graphics.FromImage(bitmap))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+                    g.Clear(Color.Transparent);
+                    DrawCard(g);
+                }
+                Layered.Apply(Handle, bitmap, Left, Top);
+            }
+        }
+
+        private void DrawCard(Graphics g)
+        {
             using (GraphicsPath path = RoundedPath(new Rectangle(0, 0, Width - 1, Height - 1), Radius))
             {
-                using (var fill = new SolidBrush(Color.FromArgb(30, 30, 30))) g.FillPath(fill, path);
+                int alpha = (int)Math.Round(Math.Max(0.3, Math.Min(1.0, _settings.opacity)) * 255);
+                using (var fill = new SolidBrush(Color.FromArgb(alpha, 30, 30, 30))) g.FillPath(fill, path);
                 using (var border = new Pen(Color.FromArgb(51, 255, 255, 255))) g.DrawPath(border, path);
             }
 
@@ -215,7 +256,7 @@ namespace PolzaWidget
                 g.FillEllipse(dot, 14, 13, 8, 8);
 
             DrawText(g, "polza.ai", _fBrand, muted, new Rectangle(24, 4, 160, 24), StringAlignment.Near);
-            DrawText(g, "\uE72C", _fIcon, _hover == 1 ? Color.White : muted, RefreshRect, StringAlignment.Center);
+            DrawText(g, "\u27F3", _fRefresh, _hover == 1 ? Color.White : muted, RefreshRect, StringAlignment.Center);
             DrawText(g, "\uE711", _fIcon, _hover == 2 ? Color.White : muted, CloseRect, StringAlignment.Center);
 
             DrawText(g, _total.ToString("N2", Ru) + " ₽", _fAmount, Color.White,
@@ -289,7 +330,7 @@ namespace PolzaWidget
             {
                 _hover = hover;
                 Cursor = hover != 0 ? Cursors.Hand : Cursors.SizeAll;
-                Invalidate(new Rectangle(248, 0, 70, 30));
+                Render();
             }
             if (_dragging)
             {

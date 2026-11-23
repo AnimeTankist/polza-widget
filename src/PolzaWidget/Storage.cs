@@ -13,6 +13,8 @@ namespace PolzaWidget
         public string apiKey = "";
         public int refreshSeconds = 30;
         public bool topmost = false;
+        /// <summary>Непрозрачность фона: 1.0 — плотный, 0.95 — как в исходной версии.</summary>
+        public double opacity = 0.95;
 
         public static string DataDir
         {
@@ -38,6 +40,8 @@ namespace PolzaWidget
                 var s = new JavaScriptSerializer().Deserialize<AppSettings>(text);
                 if (s == null) return null;
                 if (s.refreshSeconds < 10) s.refreshSeconds = 10;
+                if (s.opacity < 0.3) s.opacity = 0.3;
+                if (s.opacity > 1.0) s.opacity = 1.0;
                 return s;
             }
             catch { return null; }
@@ -48,7 +52,8 @@ namespace PolzaWidget
             string json = "{\r\n" +
                           "  \"apiKey\": \"" + Escape(apiKey) + "\",\r\n" +
                           "  \"refreshSeconds\": " + refreshSeconds.ToString(CultureInfo.InvariantCulture) + ",\r\n" +
-                          "  \"topmost\": " + (topmost ? "true" : "false") + "\r\n" +
+                          "  \"topmost\": " + (topmost ? "true" : "false") + ",\r\n" +
+                          "  \"opacity\": " + opacity.ToString("0.##", CultureInfo.InvariantCulture) + "\r\n" +
                           "}";
             File.WriteAllText(ConfigPath, json, new UTF8Encoding(true));
         }
